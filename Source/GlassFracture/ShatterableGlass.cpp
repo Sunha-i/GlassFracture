@@ -54,7 +54,7 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 		FVector WorldHitLocation = Hit.ImpactPoint;
 		FVector LocalHitPosition = Glass->GetComponentTransform().InverseTransformPosition(WorldHitLocation);
 		UE_LOG(LogTemp, Warning, TEXT("Hit Point in Glass Local Space: %s"), *LocalHitPosition.ToString());
-		UE_LOG(LogTemp, Warning, TEXT("Hit Point in Glass World Space: %s"), *WorldHitLocation.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("Hit Point in World Space: %s"), *WorldHitLocation.ToString());
 		UE_LOG(LogTemp, Warning, TEXT("Actor Location: %s"), *GetActorLocation().ToString());
 
 		DrawDebugSphere(GetWorld(), WorldHitLocation, 8.0f, 12, FColor::White, false, 5.0f);
