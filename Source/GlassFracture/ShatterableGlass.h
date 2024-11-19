@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "TriangulationTypes.h"
+
 #include "ShatterableGlass.generated.h"
 
 UCLASS()
@@ -19,10 +21,21 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
 	UPROPERTY(VisibleAnywhere)
 	UStaticMeshComponent* Glass;
+
+public:
+	UFUNCTION()
+	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+private:
+	UPROPERTY(VisibleAnywhere)	FVector LocalMinBound;
+	UPROPERTY(VisibleAnywhere)	FVector LocalMaxBound;
+
+	TArray<Piece> PatternCells;
+	TArray<Piece> GridPolygons;
+
+	void CreateFracturePattern(const FVector& ImpactPosition);
+	void CreateGridPolygons(int32 rows, int32 cols);
+	void VisualizePieces(const TArray<Piece>& Pieces, bool bRandomizeColor, float Duration);
 };
