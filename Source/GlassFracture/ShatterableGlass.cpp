@@ -2,6 +2,7 @@
 
 
 #include "ShatterableGlass.h"
+#include "PolygonClipper.h"
 
 // Sets default values
 AShatterableGlass::AShatterableGlass()
@@ -44,7 +45,7 @@ void AShatterableGlass::BeginPlay()
 	UE_LOG(LogTemp, Warning, TEXT("Min Bounds: %s, Max Bounds: %s"), *LocalMinBound.ToString(), *LocalMaxBound.ToString());
 
 	CreateGridPolygons(4, 4);
-	VisualizePieces(GridPolygons, true, 5.0f);
+	VisualizePieces(GridPolygons, false, 5.0f);
 }
 
 void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -61,6 +62,25 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 
 		CreateFracturePattern(WorldHitLocation);
 		VisualizePieces(PatternCells, false, 5.0f);
+
+		int32 PieceIndex = 0;
+		for (int32 i = 0; i < GridPolygons.Num(); ++i) {
+			const Piece& Subject = GridPolygons[i];
+
+			for (int32 j = 0; j < PatternCells.Num(); ++j) {
+				const Piece& Clip = PatternCells[j];
+
+				TArray<Point> ClippedPoints = PolygonClipper::PerformClipping(Subject.points, Clip.points);
+
+				if (ClippedPoints.Num() > 0) {
+					ClippedPieces.Add(Piece(ClippedPoints));
+					UE_LOG(LogTemp, Warning, TEXT("Piece %d generated clipped piece %d"), j, PieceIndex);
+					PieceIndex++;
+				}
+			}
+		}
+		UE_LOG(LogTemp, Warning, TEXT("number of clipped pieces: %d"), ClippedPieces.Num());
+		VisualizePieces(ClippedPieces, true, 20.0f);
 	}
 }
 
@@ -79,28 +99,28 @@ void AShatterableGlass::CreateFracturePattern(const FVector& ImpactPosition)
 
 	// Add pieces
 	PatternCells.Add(Piece(
-		{ Edge(Vertex(TopLeft.X, TopLeft.Z), Vertex(Center.X, Center.Z)),
-		  Edge(Vertex(Center.X, Center.Z), Vertex(TopRight.X, TopRight.Z)),
-		  Edge(Vertex(TopRight.X, TopRight.Z), Vertex(TopLeft.X, TopLeft.Z)) },
-		{ Vertex(TopLeft.X, TopLeft.Z), Vertex(TopRight.X, TopRight.Z), Vertex(Center.X, Center.Z) }));
+		{ Edge(Point(TopLeft.X, TopLeft.Z), Point(Center.X, Center.Z)),
+		  Edge(Point(Center.X, Center.Z), Point(TopRight.X, TopRight.Z)),
+		  Edge(Point(TopRight.X, TopRight.Z), Point(TopLeft.X, TopLeft.Z)) },
+		{ Point(TopLeft.X, TopLeft.Z), Point(TopRight.X, TopRight.Z), Point(Center.X, Center.Z) }));
 
 	PatternCells.Add(Piece(
-		{ Edge(Vertex(TopRight.X, TopRight.Z), Vertex(Center.X, Center.Z)),
-		  Edge(Vertex(Center.X, Center.Z), Vertex(BottomRight.X, BottomRight.Z)),
-		  Edge(Vertex(BottomRight.X, BottomRight.Z), Vertex(TopRight.X, TopRight.Z)) },
-		{ Vertex(TopRight.X, TopRight.Z), Vertex(BottomRight.X, BottomRight.Z), Vertex(Center.X, Center.Z) }));
+		{ Edge(Point(TopRight.X, TopRight.Z), Point(Center.X, Center.Z)),
+		  Edge(Point(Center.X, Center.Z), Point(BottomRight.X, BottomRight.Z)),
+		  Edge(Point(BottomRight.X, BottomRight.Z), Point(TopRight.X, TopRight.Z)) },
+		{ Point(TopRight.X, TopRight.Z), Point(BottomRight.X, BottomRight.Z), Point(Center.X, Center.Z) }));
 
 	PatternCells.Add(Piece(
-		{ Edge(Vertex(BottomRight.X, BottomRight.Z), Vertex(Center.X, Center.Z)),
-		  Edge(Vertex(Center.X, Center.Z), Vertex(BottomLeft.X, BottomLeft.Z)),
-		  Edge(Vertex(BottomLeft.X, BottomLeft.Z), Vertex(BottomRight.X, BottomRight.Z)) },
-		{ Vertex(BottomRight.X, BottomRight.Z), Vertex(BottomLeft.X, BottomLeft.Z), Vertex(Center.X, Center.Z) }));
+		{ Edge(Point(BottomRight.X, BottomRight.Z), Point(Center.X, Center.Z)),
+		  Edge(Point(Center.X, Center.Z), Point(BottomLeft.X, BottomLeft.Z)),
+		  Edge(Point(BottomLeft.X, BottomLeft.Z), Point(BottomRight.X, BottomRight.Z)) },
+		{ Point(BottomRight.X, BottomRight.Z), Point(BottomLeft.X, BottomLeft.Z), Point(Center.X, Center.Z) }));
 
 	PatternCells.Add(Piece(
-		{ Edge(Vertex(BottomLeft.X, BottomLeft.Z), Vertex(Center.X, Center.Z)),
-		  Edge(Vertex(Center.X, Center.Z), Vertex(TopLeft.X, TopLeft.Z)),
-		  Edge(Vertex(TopLeft.X, TopLeft.Z), Vertex(BottomLeft.X, BottomLeft.Z)) },
-		{ Vertex(BottomLeft.X, BottomLeft.Z), Vertex(TopLeft.X, TopLeft.Z), Vertex(Center.X, Center.Z) }));
+		{ Edge(Point(BottomLeft.X, BottomLeft.Z), Point(Center.X, Center.Z)),
+		  Edge(Point(Center.X, Center.Z), Point(TopLeft.X, TopLeft.Z)),
+		  Edge(Point(TopLeft.X, TopLeft.Z), Point(BottomLeft.X, BottomLeft.Z)) },
+		{ Point(BottomLeft.X, BottomLeft.Z), Point(TopLeft.X, TopLeft.Z), Point(Center.X, Center.Z) }));
 }
 
 void AShatterableGlass::CreateGridPolygons(int32 rows, int32 cols)
@@ -116,13 +136,13 @@ void AShatterableGlass::CreateGridPolygons(int32 rows, int32 cols)
 		for (int32 col = 0; col < cols; ++col)
 		{
 			// Define vertices for each cell
-			Vertex TopLeft(LocalMinBound.X + col * cellWidth, LocalMinBound.Z + (row + 1) * cellHeight);
-			Vertex TopRight(LocalMinBound.X + (col + 1) * cellWidth, LocalMinBound.Z + (row + 1) * cellHeight);
-			Vertex BottomLeft(LocalMinBound.X + col * cellWidth, LocalMinBound.Z + row * cellHeight);
-			Vertex BottomRight(LocalMinBound.X + (col + 1) * cellWidth, LocalMinBound.Z + row * cellHeight);
+			Point TopLeft(LocalMinBound.X + col * cellWidth, LocalMinBound.Z + (row + 1) * cellHeight);
+			Point TopRight(LocalMinBound.X + (col + 1) * cellWidth, LocalMinBound.Z + (row + 1) * cellHeight);
+			Point BottomLeft(LocalMinBound.X + col * cellWidth, LocalMinBound.Z + row * cellHeight);
+			Point BottomRight(LocalMinBound.X + (col + 1) * cellWidth, LocalMinBound.Z + row * cellHeight);
 
 			// Create edges and vertices for the piece
-			TArray<Vertex> cellVertices = { TopLeft, TopRight, BottomRight, BottomLeft };
+			TArray<Point> cellVertices = { TopLeft, TopRight, BottomRight, BottomLeft };
 			TArray<Edge> cellEdges;
 			for (int32 i = 0; i < cellVertices.Num(); ++i)
 			{

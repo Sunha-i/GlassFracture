@@ -2,29 +2,36 @@
 
 #include "CoreMinimal.h"
 
-struct Vertex
+struct Point
 {
 	float x;
 	float z;
 
-	Vertex(float _x, float _z) : x(_x), z(_z) {}
+	Point(float _x, float _z) : x(_x), z(_z) {}
 };
 
 struct Edge
 {
-	Vertex v0;
-	Vertex v1;
+	Point v0;
+	Point v1;
 
-	Edge(const Vertex& _v0, const Vertex& _v1) : v0(_v0), v1(_v1) {}
+	Edge(const Point& _v0, const Point& _v1) : v0(_v0), v1(_v1) {}
 };
 
 struct Piece
 	/* Pieces are convex components.The term 'cells' is used for the fracture pattern,
 	while the term 'convex' refers to the convex parts of the compounds. */
 {
-	TArray<Vertex> vertices;
+	TArray<Point> points;
 	TArray<Edge> edges;
 
-	Piece(const TArray<Edge>& _edges, const TArray<Vertex>& _vertices)
-		: edges(_edges), vertices(_vertices) {}
+	Piece(const TArray<Edge>& _edges, const TArray<Point>& _points)
+		: edges(_edges), points(_points) {}
+
+	Piece(const TArray<Point>& _points) : points(_points)
+	{
+		for (int32 i = 0; i < points.Num(); i++) {
+			edges.Add(Edge(points[i], points[(i + 1) % points.Num()]));
+		}
+	}
 };

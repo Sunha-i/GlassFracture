@@ -34,6 +34,7 @@ private:
 
 	TArray<Piece> PatternCells;
 	TArray<Piece> GridPolygons;
+	TArray<Piece> ClippedPieces;
 
 	void CreateFracturePattern(const FVector& ImpactPosition);
 	void CreateGridPolygons(int32 rows, int32 cols);
