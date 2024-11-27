@@ -7,10 +7,14 @@
 // Sets default values
 AShatterableGlass::AShatterableGlass()
 {
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
 
+	USceneComponent* Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	SetRootComponent(Root);
+
 	Glass = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("GLASS"));
+	Glass->SetupAttachment(Root);
 	Glass->SetWorldScale3D(FVector(3.0f, 0.0f, 3.0f));
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh>
@@ -29,14 +33,13 @@ AShatterableGlass::AShatterableGlass()
 
 	Glass->OnComponentHit.AddDynamic(this, &AShatterableGlass::OnHit);
 
-	RootComponent = Glass;
 }
 
 // Called when the game starts or when spawned
 void AShatterableGlass::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
 	Glass->GetLocalBounds(LocalMinBound, LocalMaxBound);
 	FVector Scale = Glass->GetComponentScale();
 	LocalMinBound *= Scale;
@@ -61,7 +64,10 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 		DrawDebugSphere(GetWorld(), WorldHitLocation, 8.0f, 12, FColor::White, false, 5.0f);
 
 		CreateFracturePattern(WorldHitLocation);
-		VisualizePieces(PatternCells, false, 5.0f);
+		VisualizePieces(PatternCells, false, 10.0f);
+
+		TArray<Piece> ClippedPieces;
+		TMap<int32, TArray<int32>> CellToPiecesMap;
 
 		int32 PieceIndex = 0;
 		for (int32 i = 0; i < GridPolygons.Num(); ++i) {
@@ -75,12 +81,19 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 				if (ClippedPoints.Num() > 0) {
 					ClippedPieces.Add(Piece(ClippedPoints));
 					UE_LOG(LogTemp, Warning, TEXT("Piece %d generated clipped piece %d"), j, PieceIndex);
+
+					if (!CellToPiecesMap.Contains(j)) {
+						CellToPiecesMap.Add(j, TArray<int32>());
+					}
+					CellToPiecesMap[j].Add(PieceIndex);
 					PieceIndex++;
 				}
 			}
 		}
 		UE_LOG(LogTemp, Warning, TEXT("number of clipped pieces: %d"), ClippedPieces.Num());
 		VisualizePieces(ClippedPieces, true, 20.0f);
+
+		GeneratePieceMeshes(ClippedPieces, CellToPiecesMap);
 	}
 }
 
@@ -155,6 +168,106 @@ void AShatterableGlass::CreateGridPolygons(int32 rows, int32 cols)
 	}
 }
 
+void AShatterableGlass::GeneratePieceMeshes(const TArray<Piece>& Pieces, const TMap<int32, TArray<int32>>& CellToPiecesMap)
+{
+	UMaterialInterface* GlassMaterial = nullptr;
+	if (Glass)
+	{
+		GlassMaterial = Glass->GetMaterial(0);
+		Glass->DestroyComponent();
+		Glass = nullptr;
+	}
+
+	for (const auto& Pair : CellToPiecesMap)
+	{
+		int32 CellIndex = Pair.Key;
+		const TArray<int32>& PieceIndices = Pair.Value;
+
+		// Dynamically create a procedural mesh component for each cell piece
+		FString PieceName = FString::Printf(TEXT("CellPiece_%d"), CellIndex);
+		UProceduralMeshComponent* PieceMesh = NewObject<UProceduralMeshComponent>(this, *PieceName);
+		PieceMesh->RegisterComponent();
+		PieceMesh->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+
+		// Set collision profile
+		PieceMesh->SetCollisionProfileName(TEXT("BlockAll"));
+		PieceMesh->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Block);
+		PieceMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		PieceMesh->SetCollisionObjectType(ECollisionChannel::ECC_PhysicsBody);
+
+		// Configure collision settings
+		PieceMesh->bUseComplexAsSimpleCollision = false;
+		PieceMesh->SetSimulatePhysics(true);
+		PieceMesh->bAlwaysCreatePhysicsState = true;
+
+		int32 SectionIndex = 0;
+		for (const int32 PieceIndex : PieceIndices)
+		{
+			const Piece& Piece = Pieces[PieceIndex];
+
+			TArray<int32> TriangleIndices;
+			TArray<FVector> MeshVertices;
+			FanTriangulation(Piece.points, TriangleIndices, MeshVertices);
+
+			PieceMesh->CreateMeshSection(
+				SectionIndex,                  // Section index
+				MeshVertices,                  // Vertex data for the mesh
+				TriangleIndices,               // Triangle faces
+				TArray<FVector>(),             // Empty normals array
+				TArray<FVector2D>(),           // Empty UVs array
+				TArray<FColor>(),              // Empty vertex colors array
+				TArray<FProcMeshTangent>(),    // Empty tangents array
+				true                           // Enable collision
+			);
+
+			PieceMesh->AddCollisionConvexMesh(MeshVertices);
+			if (GlassMaterial) {
+				PieceMesh->SetMaterial(SectionIndex, GlassMaterial);
+			}
+
+			SectionIndex++;
+		}
+
+		// Apply an impulse in a randomly varied direction based on the Y-axis.
+		FVector ImpactDirection = FVector(0.0f, 1.0f, 0.0f) + FMath::VRand() * 0.2f;
+		ImpactDirection = ImpactDirection.GetSafeNormal();
+		float ImpulseStrength = 500.0f;
+		PieceMesh->AddImpulse(ImpactDirection * ImpulseStrength, NAME_None, true);
+		PieceMesh->WakeRigidBody();
+	}
+}
+
+void AShatterableGlass::FanTriangulation(const Piece& Piece, TArray<int32>& Triangles, TArray<FVector>& MeshVertices)
+{
+	const TArray<Point>& Points = Piece.points;
+
+	// Front face vertices & triangles
+	int32 FrontFaceOffset = MeshVertices.Num();
+	for (const Point& point : Points)
+	{
+		MeshVertices.Add(FVector(point.x, 0.0f, point.z));
+	}
+	for (int32 i = 1; i < Points.Num() - 1; i++)
+	{
+		Triangles.Add(FrontFaceOffset);
+		Triangles.Add(FrontFaceOffset + i);
+		Triangles.Add(FrontFaceOffset + i + 1);
+	}
+
+	// Back face (reverse winding order)
+	int32 BackFaceOffset = MeshVertices.Num();
+	for (const Point& point : Points)
+	{
+		MeshVertices.Add(FVector(point.x, 0.0f, point.z));
+	}
+	for (int32 i = 1; i < Points.Num() - 1; i++)
+	{
+		Triangles.Add(BackFaceOffset);
+		Triangles.Add(BackFaceOffset + i + 1);
+		Triangles.Add(BackFaceOffset + i);
+	}
+}
+
 void AShatterableGlass::VisualizePieces(const TArray<Piece>& Pieces, bool bRandomizeColor, float Duration)
 {
 	FVector ActorLocation = GetActorLocation();
@@ -162,7 +275,7 @@ void AShatterableGlass::VisualizePieces(const TArray<Piece>& Pieces, bool bRando
 
 	for (const Piece& Piece : Pieces)
 	{
-		if (bRandomizeColor) 
+		if (bRandomizeColor)
 		{
 			LineColor = FLinearColor::MakeRandomColor().ToFColor(true);
 		}
