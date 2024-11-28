@@ -23,11 +23,14 @@ protected:
 	virtual void BeginPlay() override;
 
 	UPROPERTY(VisibleAnywhere)
-		UStaticMeshComponent* Glass;
+	UStaticMeshComponent* Glass;
+
+	UPROPERTY(VisibleAnywhere)
+	UProceduralMeshComponent* ProcMesh;
 
 public:
 	UFUNCTION()
-		void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 private:
 	UPROPERTY(VisibleAnywhere)	FVector LocalMinBound;
@@ -43,4 +46,5 @@ private:
 	void FanTriangulation(const Piece& Piece, TArray<int32>& Triangles, TArray<FVector>& MeshVertices);
 
 	void VisualizePieces(const TArray<Piece>& Pieces, bool bRandomizeColor, float Duration);
+	void GenerateCube();
 };
