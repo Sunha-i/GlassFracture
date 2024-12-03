@@ -8,7 +8,16 @@ struct Point
 	float z;
 
 	Point(float _x, float _z) : x(_x), z(_z) {}
+
+	bool operator==(const Point& point) const {
+		return (x == point.x && z == point.z);
+	}
 };
+
+FORCEINLINE uint32 GetTypeHash(const Point& point)
+{
+	return HashCombine(GetTypeHash(point.x), GetTypeHash(point.z));
+}
 
 struct Edge
 {
@@ -16,6 +25,27 @@ struct Edge
 	Point v1;
 
 	Edge(const Point& _v0, const Point& _v1) : v0(_v0), v1(_v1) {}
+
+	bool operator==(const Edge& edge) const {
+		return (v0 == edge.v0 && v1 == edge.v1) || (v0 == edge.v1 && v1 == edge.v0);
+	}
+};
+
+FORCEINLINE uint32 GetTypeHash(const Edge& edge)
+{
+	uint32 Hash1 = HashCombine(GetTypeHash(edge.v0), GetTypeHash(edge.v1));
+	uint32 Hash2 = HashCombine(GetTypeHash(edge.v1), GetTypeHash(edge.v0));
+
+	return FMath::Min(Hash1, Hash2);
+}
+
+struct Circle
+{
+	Point center;
+	float radius;
+
+	Circle(const Point& _center, float _radius)
+		: center(_center), radius(_radius) {}
 };
 
 struct Piece
