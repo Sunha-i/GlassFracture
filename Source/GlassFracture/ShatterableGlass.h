@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "TriangulationTypes.h"
 #include "ProceduralMeshComponent.h"
+#include "Engine/DataTable.h"
 
 #include "ShatterableGlass.generated.h"
 
@@ -36,10 +37,15 @@ private:
 	UPROPERTY(VisibleAnywhere)	FVector LocalMinBound;
 	UPROPERTY(VisibleAnywhere)	FVector LocalMaxBound;
 
+	UPROPERTY(EditAnywhere, Category = "FracturePattern")
+	UDataTable* PolygonDataTable;
+
+	UPROPERTY(EditAnywhere, Category = "FracturePattern")
+	UDataTable* VertexDataTable;
+
 	TArray<Piece> PatternCells;
 	TArray<Piece> GridPolygons;
 
-	void CreateFracturePattern(const FVector& ImpactPosition);
 	void CreateGridPolygons(int32 rows, int32 cols);
 
 	void GeneratePieceMeshes(const TArray<Piece>& Pieces, const TMap<int32, TArray<int32>>& CellToPiecesMap);

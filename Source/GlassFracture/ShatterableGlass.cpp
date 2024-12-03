@@ -3,6 +3,7 @@
 
 #include "ShatterableGlass.h"
 #include "PolygonClipper.h"
+#include "PatternCells/FracturePatternGenerator.h"
 
 // Sets default values
 AShatterableGlass::AShatterableGlass()
@@ -87,7 +88,8 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 
 			DrawDebugSphere(GetWorld(), WorldHitLocation, 8.0f, 12, FColor::White, false, 5.0f);
 
-			CreateFracturePattern(WorldHitLocation);
+			//PatternCells = FracturePatternGenerator::CreateDiagonalPieces(WorldHitLocation, LocalMaxBound - LocalMinBound, GetActorLocation());
+			PatternCells = FracturePatternGenerator::CreateSpiderwebPieces(LocalHitPosition * 3.0f, GetActorLocation(), PolygonDataTable, VertexDataTable);
 			VisualizePieces(PatternCells, false, 10.0f);
 
 			TArray<Piece> ClippedPieces;
@@ -117,7 +119,7 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 			UE_LOG(LogTemp, Warning, TEXT("number of clipped pieces: %d"), ClippedPieces.Num());
 			VisualizePieces(ClippedPieces, true, 20.0f);
 
-			GenerateCube();
+			GeneratePieceMeshes(ClippedPieces, CellToPiecesMap);
 		}
 		else if (HitComp == ProcMesh)
 		{
@@ -176,45 +178,6 @@ void AShatterableGlass::GenerateCube()
 	//ProcMesh->RecreatePhysicsState();
 	//ProcMesh->ContainsPhysicsTriMeshData(true);
 	//ProcMesh->UpdateCollision();
-}
-
-void AShatterableGlass::CreateFracturePattern(const FVector& ImpactPosition)
-{
-	PatternCells.Empty();
-
-	FVector Extent = LocalMaxBound - LocalMinBound;
-	FVector Center = ImpactPosition - GetActorLocation();	// same as (LocalHitPosition * Scale)
-
-	// Define vertices
-	FVector TopLeft = Center + FVector(-Extent.X, 0.0f, Extent.Z);
-	FVector TopRight = Center + FVector(Extent.X, 0.0f, Extent.Z);
-	FVector BottomLeft = Center + FVector(-Extent.X, 0.0f, -Extent.Z);
-	FVector BottomRight = Center + FVector(Extent.X, 0.0f, -Extent.Z);
-
-	// Add pieces
-	PatternCells.Add(Piece(
-		{ Edge(Point(TopLeft.X, TopLeft.Z), Point(Center.X, Center.Z)),
-		  Edge(Point(Center.X, Center.Z), Point(TopRight.X, TopRight.Z)),
-		  Edge(Point(TopRight.X, TopRight.Z), Point(TopLeft.X, TopLeft.Z)) },
-		{ Point(TopLeft.X, TopLeft.Z), Point(TopRight.X, TopRight.Z), Point(Center.X, Center.Z) }));
-
-	PatternCells.Add(Piece(
-		{ Edge(Point(TopRight.X, TopRight.Z), Point(Center.X, Center.Z)),
-		  Edge(Point(Center.X, Center.Z), Point(BottomRight.X, BottomRight.Z)),
-		  Edge(Point(BottomRight.X, BottomRight.Z), Point(TopRight.X, TopRight.Z)) },
-		{ Point(TopRight.X, TopRight.Z), Point(BottomRight.X, BottomRight.Z), Point(Center.X, Center.Z) }));
-
-	PatternCells.Add(Piece(
-		{ Edge(Point(BottomRight.X, BottomRight.Z), Point(Center.X, Center.Z)),
-		  Edge(Point(Center.X, Center.Z), Point(BottomLeft.X, BottomLeft.Z)),
-		  Edge(Point(BottomLeft.X, BottomLeft.Z), Point(BottomRight.X, BottomRight.Z)) },
-		{ Point(BottomRight.X, BottomRight.Z), Point(BottomLeft.X, BottomLeft.Z), Point(Center.X, Center.Z) }));
-
-	PatternCells.Add(Piece(
-		{ Edge(Point(BottomLeft.X, BottomLeft.Z), Point(Center.X, Center.Z)),
-		  Edge(Point(Center.X, Center.Z), Point(TopLeft.X, TopLeft.Z)),
-		  Edge(Point(TopLeft.X, TopLeft.Z), Point(BottomLeft.X, BottomLeft.Z)) },
-		{ Point(BottomLeft.X, BottomLeft.Z), Point(TopLeft.X, TopLeft.Z), Point(Center.X, Center.Z) }));
 }
 
 void AShatterableGlass::CreateGridPolygons(int32 rows, int32 cols)
