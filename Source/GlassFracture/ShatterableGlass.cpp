@@ -87,6 +87,8 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 			UE_LOG(LogTemp, Warning, TEXT("Actor Location: %s"), *GetActorLocation().ToString());
 
 			DrawDebugSphere(GetWorld(), WorldHitLocation, 8.0f, 12, FColor::White, false, 5.0f);
+			float ImpactRadius = 50.0f;
+			DrawImpactCircle(WorldHitLocation, ImpactRadius);
 
 			//PatternCells = FracturePatternGenerator::CreateDiagonalPieces(WorldHitLocation, LocalMaxBound - LocalMinBound, GetActorLocation());
 			PatternCells = FracturePatternGenerator::CreateSpiderwebPieces(LocalHitPosition * 3.0f, GetActorLocation(), PolygonDataTable, VertexDataTable);
@@ -329,5 +331,30 @@ void AShatterableGlass::VisualizePieces(const TArray<Piece>& Pieces, bool bRando
 			FVector End = ActorLocation + FVector(Edge.v1.x, 0.0f, Edge.v1.z);
 			DrawDebugLine(GetWorld(), Start, End, LineColor, false, Duration, 0, 2.0f);
 		}
+	}
+}
+
+void AShatterableGlass::DrawImpactCircle(const FVector& ImpactPosition, float Radius, const FColor& Color, float Duration, float Thickness, int32 NumSegments)
+{
+	TArray<FVector> CirclePoints;
+
+	FVector ActorLocation = GetActorLocation();
+	FVector Center = ImpactPosition - ActorLocation;	// same as (LocalHitPosition * Scale)
+
+	// Calculate points on circumference
+	for (int32 i = 0; i < NumSegments; ++i)
+	{
+		float Angle = 2.0f * PI * i / NumSegments;
+		float X = Center.X + Radius * FMath::Cos(Angle);
+		float Z = Center.Z + Radius * FMath::Sin(Angle);
+		CirclePoints.Add(FVector(X, 0.0f, Z));
+	}
+
+	// Draw sphere
+	for (int32 i = 0; i < CirclePoints.Num(); ++i)
+	{
+		const FVector& Start = ActorLocation + CirclePoints[i];
+		const FVector& End = ActorLocation + CirclePoints[(i + 1) % CirclePoints.Num()];
+		DrawDebugLine(GetWorld(), Start, End, Color, false, Duration, 0, Thickness);
 	}
 }

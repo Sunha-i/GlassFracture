@@ -52,5 +52,6 @@ private:
 	void FanTriangulation(const Piece& Piece, TArray<int32>& Triangles, TArray<FVector>& MeshVertices);
 
 	void VisualizePieces(const TArray<Piece>& Pieces, bool bRandomizeColor, float Duration);
+	void DrawImpactCircle(const FVector& ImpactPosition, float Radius, const FColor& Color = FColor::White, float Duration = 5.0f, float Thickness = 2.0f, int32 NumSegments = 36);
 	void GenerateCube();
 };
