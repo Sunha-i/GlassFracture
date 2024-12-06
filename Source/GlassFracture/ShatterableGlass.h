@@ -34,24 +34,31 @@ public:
 	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 private:
+	enum class ECircleIntersectionType
+	{
+		Inside,      // Fully contained within the circle
+		Overlapping, // Partially overlapping with the circle
+		Outside      // Completely outside the circle
+	};
+
 	UPROPERTY(VisibleAnywhere)	FVector LocalMinBound;
 	UPROPERTY(VisibleAnywhere)	FVector LocalMaxBound;
 
-	UPROPERTY(EditAnywhere, Category = "FracturePattern")
-	UDataTable* PolygonDataTable;
-
-	UPROPERTY(EditAnywhere, Category = "FracturePattern")
-	UDataTable* VertexDataTable;
+	UPROPERTY(EditAnywhere, Category = "FracturePattern")	UDataTable* PolygonDataTable;
+	UPROPERTY(EditAnywhere, Category = "FracturePattern")	UDataTable* VertexDataTable;
 
 	TArray<Piece> PatternCells;
 	TArray<Piece> GridPolygons;
 
 	void CreateGridPolygons(int32 rows, int32 cols);
 
+	void GeneratePieceMeshes(const TArray<Piece>& Pieces);
 	void GeneratePieceMeshes(const TArray<Piece>& Pieces, const TMap<int32, TArray<int32>>& CellToPiecesMap);
 	void FanTriangulation(const Piece& Piece, TArray<int32>& Triangles, TArray<FVector>& MeshVertices);
 
 	void VisualizePieces(const TArray<Piece>& Pieces, bool bRandomizeColor, float Duration);
 	void DrawImpactCircle(const FVector& ImpactPosition, float Radius, const FColor& Color = FColor::White, float Duration = 5.0f, float Thickness = 2.0f, int32 NumSegments = 36);
 	void GenerateCube();
+
+	ECircleIntersectionType CheckPieceCircleIntersection(const Piece& Piece, const FVector& CircleCenter, float Radius);
 };

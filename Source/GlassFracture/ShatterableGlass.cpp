@@ -67,7 +67,7 @@ void AShatterableGlass::BeginPlay()
 	UE_LOG(LogTemp, Warning, TEXT("Min Bounds: %s, Max Bounds: %s"), *LocalMinBound.ToString(), *LocalMaxBound.ToString());
 
 	CreateGridPolygons(4, 4);
-	VisualizePieces(GridPolygons, false, 5.0f);
+	VisualizePieces(GridPolygons, false, 0.0f);
 }
 
 void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -92,14 +92,24 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 
 			//PatternCells = FracturePatternGenerator::CreateDiagonalPieces(WorldHitLocation, LocalMaxBound - LocalMinBound, GetActorLocation());
 			PatternCells = FracturePatternGenerator::CreateSpiderwebPieces(LocalHitPosition * 3.0f, GetActorLocation(), PolygonDataTable, VertexDataTable);
-			VisualizePieces(PatternCells, false, 10.0f);
+			VisualizePieces(PatternCells, false, 0.0f);
 
 			TArray<Piece> ClippedPieces;
+			TArray<Piece> OutsidePieces;
 			TMap<int32, TArray<int32>> CellToPiecesMap;
 
 			int32 PieceIndex = 0;
 			for (int32 i = 0; i < GridPolygons.Num(); ++i) {
 				const Piece& Subject = GridPolygons[i];
+
+				FVector Scale = Glass->GetComponentScale();
+				Point Center((LocalHitPosition * Scale).X, (LocalHitPosition * Scale).Z);
+				ECircleIntersectionType IntersectionResult = CheckPieceCircleIntersection(Subject, FVector(Center.x, 0.0f, Center.z), ImpactRadius);
+
+				if (IntersectionResult == ECircleIntersectionType::Outside) {
+					OutsidePieces.Add(Subject);
+					continue;
+				}
 
 				for (int32 j = 0; j < PatternCells.Num(); ++j) {
 					const Piece& Clip = PatternCells[j];
@@ -107,21 +117,34 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 					TArray<Point> ClippedPoints = PolygonClipper::PerformClipping(Subject.points, Clip.points);
 
 					if (ClippedPoints.Num() > 0) {
-						ClippedPieces.Add(Piece(ClippedPoints));
-						UE_LOG(LogTemp, Warning, TEXT("Piece %d generated clipped piece %d"), j, PieceIndex);
+						Piece NewPiece(ClippedPoints);
+						ECircleIntersectionType ClippedIntersectionResult = CheckPieceCircleIntersection(NewPiece, FVector(Center.x, 0.0f, Center.z), ImpactRadius);
 
-						if (!CellToPiecesMap.Contains(j)) {
-							CellToPiecesMap.Add(j, TArray<int32>());
+						switch (ClippedIntersectionResult) {
+						case ECircleIntersectionType::Inside:
+						case ECircleIntersectionType::Overlapping:
+							ClippedPieces.Add(NewPiece);
+							UE_LOG(LogTemp, Warning, TEXT("Piece %d generated clipped piece %d"), j, PieceIndex);
+							
+							if (!CellToPiecesMap.Contains(j)) {
+								CellToPiecesMap.Add(j, TArray<int32>());
+							}
+							CellToPiecesMap[j].Add(PieceIndex);
+							PieceIndex++;
+							break;
+						case ECircleIntersectionType::Outside:
+							UE_LOG(LogTemp, Warning, TEXT("Clipped Piece is completely outside the circle."));
+							OutsidePieces.Add(NewPiece);
+							break;
 						}
-						CellToPiecesMap[j].Add(PieceIndex);
-						PieceIndex++;
 					}
 				}
 			}
 			UE_LOG(LogTemp, Warning, TEXT("number of clipped pieces: %d"), ClippedPieces.Num());
-			VisualizePieces(ClippedPieces, true, 20.0f);
+			VisualizePieces(ClippedPieces, true, 0.0f);
 
 			GeneratePieceMeshes(ClippedPieces, CellToPiecesMap);
+			GeneratePieceMeshes(OutsidePieces);
 		}
 		else if (HitComp == ProcMesh)
 		{
@@ -182,6 +205,36 @@ void AShatterableGlass::GenerateCube()
 	//ProcMesh->UpdateCollision();
 }
 
+AShatterableGlass::ECircleIntersectionType 
+AShatterableGlass::CheckPieceCircleIntersection(const Piece& Piece, const FVector& CircleCenter, float Radius)
+{
+	bool bAllInside = true;
+	bool bAnyInside = false;
+
+	for (const Point& point : Piece.points)
+	{
+		float distanceSquared = FMath::Pow(point.x - CircleCenter.X, 2) + FMath::Pow(point.z - CircleCenter.Z, 2);
+		if (distanceSquared <= Radius * Radius)
+		{
+			bAnyInside = true;
+		}
+		else
+		{
+			bAllInside = false;
+		}
+	}
+
+	if (bAllInside) 
+	{
+		return ECircleIntersectionType::Inside;
+	}
+	if (bAnyInside)
+	{
+		return ECircleIntersectionType::Overlapping;
+	}
+	return ECircleIntersectionType::Outside;
+}
+
 void AShatterableGlass::CreateGridPolygons(int32 rows, int32 cols)
 {
 	GridPolygons.Empty();
@@ -214,14 +267,44 @@ void AShatterableGlass::CreateGridPolygons(int32 rows, int32 cols)
 	}
 }
 
+void AShatterableGlass::GeneratePieceMeshes(const TArray<Piece>& Pieces)
+{
+	UMaterialInterface* GlassMaterial = nullptr;
+	if (Glass)
+	{
+		GlassMaterial = Glass->GetMaterial(0);
+		Glass->OnComponentHit.RemoveDynamic(this, &AShatterableGlass::OnHit);
+		Glass->DestroyComponent();
+		Glass = nullptr;
+	}
+
+	ProcMesh->ClearAllMeshSections();
+
+	int32 SectionIndex = 0;
+	for (const Piece& Piece : Pieces)
+	{
+		TArray<int32> TriangleIndices;
+		TArray<FVector> MeshVertices;
+
+		FanTriangulation(Piece.points, TriangleIndices, MeshVertices);
+
+		ProcMesh->AddCollisionConvexMesh(MeshVertices);
+		if (GlassMaterial) {
+			ProcMesh->SetMaterial(SectionIndex, GlassMaterial);
+		}
+		ProcMesh->CreateMeshSection(SectionIndex, MeshVertices, TriangleIndices, TArray<FVector>(), TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), true);
+		SectionIndex++;
+	}
+
+	ProcMesh->RecreatePhysicsState();
+}
+
 void AShatterableGlass::GeneratePieceMeshes(const TArray<Piece>& Pieces, const TMap<int32, TArray<int32>>& CellToPiecesMap)
 {
 	UMaterialInterface* GlassMaterial = nullptr;
 	if (Glass)
 	{
 		GlassMaterial = Glass->GetMaterial(0);
-		Glass->DestroyComponent();
-		Glass = nullptr;
 	}
 
 	for (const auto& Pair : CellToPiecesMap)
