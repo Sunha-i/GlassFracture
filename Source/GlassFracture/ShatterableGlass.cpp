@@ -4,6 +4,7 @@
 #include "ShatterableGlass.h"
 #include "PolygonClipper.h"
 #include "PatternCells/FracturePatternGenerator.h"
+#include "VoronoiDiagram/DelaunayTriangulator.h"
 
 // Sets default values
 AShatterableGlass::AShatterableGlass()
@@ -68,6 +69,10 @@ void AShatterableGlass::BeginPlay()
 
 	CreateGridPolygons(4, 4);
 	VisualizePieces(GridPolygons, false, 0.0f);
+
+	TArray<Point> RandomPoints = GenerateRandomPoints(50.0f, 20);
+	TArray<Triangle> DelaunayTriangles = DelaunayTriangulator::ComputeTriangulation(RandomPoints);
+	VisualizePieces(DelaunayTriangles, true, 8.0f);
 }
 
 void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -88,7 +93,7 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 
 			DrawDebugSphere(GetWorld(), WorldHitLocation, 8.0f, 12, FColor::White, false, 5.0f);
 			float ImpactRadius = 50.0f;
-			DrawImpactCircle(WorldHitLocation, ImpactRadius);
+			DrawImpactCircle(WorldHitLocation, ImpactRadius, 5.0f);
 
 			//PatternCells = FracturePatternGenerator::CreateDiagonalPieces(WorldHitLocation, LocalMaxBound - LocalMinBound, GetActorLocation());
 			PatternCells = FracturePatternGenerator::CreateSpiderwebPieces(LocalHitPosition * 3.0f, GetActorLocation(), PolygonDataTable, VertexDataTable);
@@ -155,54 +160,6 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 			UE_LOG(LogTemp, Warning, TEXT("Hit! > Other component"));
 		}
 	}
-}
-
-void AShatterableGlass::GenerateCube()
-{
-	if (Glass)
-	{
-		Glass->OnComponentHit.RemoveDynamic(this, &AShatterableGlass::OnHit);
-		Glass->DestroyComponent();
-		Glass = nullptr;
-	}
-
-	float Size = 100.0f;
-
-	TArray<FVector> Vertices1 = {
-		FVector(0, 0, 0),
-		FVector(0, Size, 0),
-		FVector(Size, Size, 0),
-		FVector(Size, 0, 0),
-		FVector(0, 0, Size),
-		FVector(0, Size, Size),
-		FVector(Size, Size, Size),
-		FVector(Size, 0, Size)
-	};
-
-	TArray<FVector> Vertices2;
-	for (const FVector& Vertex : Vertices1)
-	{
-		Vertices2.Add(Vertex + FVector(0, Size, 0));
-	}
-
-	TArray<int32> Triangles = {
-		0, 2, 1, 0, 3, 2,	// Front
-		4, 5, 6, 4, 6, 7,	// Back
-		0, 1, 5, 0, 5, 4,	// Left
-		2, 3, 7, 2, 7, 6,	// Right
-		1, 2, 6, 1, 6, 5,	// Top
-		0, 4, 7, 0, 7, 3	// Bottom
-	};
-
-	ProcMesh->AddCollisionConvexMesh(Vertices1);
-	ProcMesh->AddCollisionConvexMesh(Vertices2);
-
-	ProcMesh->CreateMeshSection(0, Vertices1, Triangles, TArray<FVector>(), TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), true);
-	ProcMesh->CreateMeshSection(1, Vertices2, Triangles, TArray<FVector>(), TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), true);
-
-	//ProcMesh->RecreatePhysicsState();
-	//ProcMesh->ContainsPhysicsTriMeshData(true);
-	//ProcMesh->UpdateCollision();
 }
 
 AShatterableGlass::ECircleIntersectionType 
@@ -297,6 +254,8 @@ void AShatterableGlass::GeneratePieceMeshes(const TArray<Piece>& Pieces)
 	}
 
 	ProcMesh->RecreatePhysicsState();
+	//ProcMesh->ContainsPhysicsTriMeshData(true);
+	//ProcMesh->UpdateCollision();
 }
 
 void AShatterableGlass::GeneratePieceMeshes(const TArray<Piece>& Pieces, const TMap<int32, TArray<int32>>& CellToPiecesMap)
@@ -397,12 +356,13 @@ void AShatterableGlass::FanTriangulation(const Piece& Piece, TArray<int32>& Tria
 	}
 }
 
-void AShatterableGlass::VisualizePieces(const TArray<Piece>& Pieces, bool bRandomizeColor, float Duration)
+template <typename T>
+void AShatterableGlass::VisualizePieces(const TArray<T>& Pieces, bool bRandomizeColor, float Duration)
 {
 	FVector ActorLocation = GetActorLocation();
 	FColor LineColor = FColor::Red;
 
-	for (const Piece& Piece : Pieces)
+	for (const T& Piece : Pieces)
 	{
 		if (bRandomizeColor)
 		{
@@ -417,7 +377,7 @@ void AShatterableGlass::VisualizePieces(const TArray<Piece>& Pieces, bool bRando
 	}
 }
 
-void AShatterableGlass::DrawImpactCircle(const FVector& ImpactPosition, float Radius, const FColor& Color, float Duration, float Thickness, int32 NumSegments)
+void AShatterableGlass::DrawImpactCircle(const FVector& ImpactPosition, float Radius, float Duration, const FColor& Color, float Thickness, int32 NumSegments)
 {
 	TArray<FVector> CirclePoints;
 
@@ -440,4 +400,48 @@ void AShatterableGlass::DrawImpactCircle(const FVector& ImpactPosition, float Ra
 		const FVector& End = ActorLocation + CirclePoints[(i + 1) % CirclePoints.Num()];
 		DrawDebugLine(GetWorld(), Start, End, Color, false, Duration, 0, Thickness);
 	}
+}
+
+TArray<Point> AShatterableGlass::GenerateRandomPoints(float MinDistance, int32 NumPoints, float EdgeOffset)
+{
+	TArray<Point> RandomPoints;
+	TArray<FVector> PoissonPoints;
+
+	const int32 MaxAttempts = 30;
+
+	FVector AdjustedMin = FVector(LocalMinBound.X + EdgeOffset, 0.0f, LocalMinBound.Z + EdgeOffset);
+	FVector AdjustedMax = FVector(LocalMaxBound.X - EdgeOffset, 0.0f, LocalMaxBound.Z - EdgeOffset);
+
+	for (int32 i = 0; i < NumPoints; ++i)
+	{
+		FVector CandidatePoint;
+		bool IsValid = false;
+
+		for (int32 attempt = 0; attempt < MaxAttempts; ++attempt)
+		{
+			CandidatePoint = FVector(
+				FMath::RandRange(AdjustedMin.X, AdjustedMax.X),
+				0.0f,
+				FMath::RandRange(AdjustedMin.Z, AdjustedMax.Z)
+			);
+			IsValid = true;
+			for (const FVector& ExistingPoint : PoissonPoints)
+			{
+				if (FVector::DistSquared(CandidatePoint, ExistingPoint) < FMath::Square(MinDistance))
+				{
+					IsValid = false;
+					break;
+				}
+			}
+			if (IsValid) break;
+		}
+		if (IsValid)
+		{
+			PoissonPoints.Add(CandidatePoint);
+			RandomPoints.Add(Point(CandidatePoint.X, CandidatePoint.Z));
+			DrawDebugSphere(GetWorld(), CandidatePoint + GetActorLocation(), 4.0f, 12, FColor::Orange, false, 8.0f);
+		}
+	}
+
+	return RandomPoints;
 }

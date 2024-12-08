@@ -56,9 +56,11 @@ private:
 	void GeneratePieceMeshes(const TArray<Piece>& Pieces, const TMap<int32, TArray<int32>>& CellToPiecesMap);
 	void FanTriangulation(const Piece& Piece, TArray<int32>& Triangles, TArray<FVector>& MeshVertices);
 
-	void VisualizePieces(const TArray<Piece>& Pieces, bool bRandomizeColor, float Duration);
-	void DrawImpactCircle(const FVector& ImpactPosition, float Radius, const FColor& Color = FColor::White, float Duration = 5.0f, float Thickness = 2.0f, int32 NumSegments = 36);
-	void GenerateCube();
+	template <typename T>
+	void VisualizePieces(const TArray<T>& Pieces, bool bRandomizeColor, float Duration);
 
+	void DrawImpactCircle(const FVector& ImpactPosition, float Radius, float Duration = 5.0f, const FColor& Color = FColor::White, float Thickness = 2.0f, int32 NumSegments = 36);
 	ECircleIntersectionType CheckPieceCircleIntersection(const Piece& Piece, const FVector& CircleCenter, float Radius);
+
+	TArray<Point> GenerateRandomPoints(float MinDistance, int32 NumPoints, float EdgeOffset = 10.0f);
 };
