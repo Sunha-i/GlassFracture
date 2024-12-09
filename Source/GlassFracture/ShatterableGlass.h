@@ -49,9 +49,11 @@ private:
 
 	TArray<Piece> PatternCells;
 	TArray<Piece> GridPolygons;
+	TArray<Piece> IntactPieces;
+
+	UMaterialInterface* GlassMaterial = nullptr;
 
 	void CreateGridPolygons(int32 rows, int32 cols);
-
 	void GeneratePieceMeshes(const TArray<Piece>& Pieces);
 	void GeneratePieceMeshes(const TArray<Piece>& Pieces, const TMap<int32, TArray<int32>>& CellToPiecesMap);
 	void FanTriangulation(const Piece& Piece, TArray<int32>& Triangles, TArray<FVector>& MeshVertices);

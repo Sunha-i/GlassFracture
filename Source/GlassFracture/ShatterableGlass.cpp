@@ -31,6 +31,7 @@ AShatterableGlass::AShatterableGlass()
 	if (MT_GLASS.Succeeded())
 	{
 		Glass->SetMaterial(0, MT_GLASS.Object);
+		GlassMaterial = MT_GLASS.Object;
 	}
 
 	Glass->OnComponentHit.AddDynamic(this, &AShatterableGlass::OnHit);
@@ -68,11 +69,8 @@ void AShatterableGlass::BeginPlay()
 	UE_LOG(LogTemp, Warning, TEXT("Min Bounds: %s, Max Bounds: %s"), *LocalMinBound.ToString(), *LocalMaxBound.ToString());
 
 	CreateGridPolygons(4, 4);
-	VisualizePieces(GridPolygons, false, 0.0f);
-
-	TArray<Point> RandomPoints = GenerateRandomPoints(50.0f, 20);
-	TArray<Triangle> DelaunayTriangles = DelaunayTriangulator::ComputeTriangulation(RandomPoints);
-	VisualizePieces(DelaunayTriangles, true, 8.0f);
+	VisualizePieces(GridPolygons, false, 1.0f);
+	IntactPieces = GridPolygons;
 }
 
 void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -80,85 +78,78 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 	if (OtherActor && (OtherActor != this) && OtherComp)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Cube hit by %s at location %s"), *OtherActor->GetName(), *Hit.ImpactPoint.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("Hit! > %s component"), *HitComp->GetName());
 
+		FVector WorldHitLocation = Hit.ImpactPoint;
+		FVector LocalHitPosition = HitComp->GetComponentTransform().InverseTransformPosition(WorldHitLocation);
+		UE_LOG(LogTemp, Warning, TEXT("Hit Point in Glass Local Space: %s"), *LocalHitPosition.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("Hit Point in World Space: %s"), *WorldHitLocation.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("Actor Location: %s"), *GetActorLocation().ToString());
+
+		DrawDebugSphere(GetWorld(), WorldHitLocation, 8.0f, 12, FColor::White, false, 5.0f);
+		float ImpactRadius = 30.0f;
+		DrawImpactCircle(WorldHitLocation, ImpactRadius, 5.0f);
+
+		//PatternCells = FracturePatternGenerator::CreateDiagonalPieces(WorldHitLocation, LocalMaxBound - LocalMinBound, GetActorLocation());
 		if (HitComp == Glass)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Hit! > Glass component"));
-
-			FVector WorldHitLocation = Hit.ImpactPoint;
-			FVector LocalHitPosition = Glass->GetComponentTransform().InverseTransformPosition(WorldHitLocation);
-			UE_LOG(LogTemp, Warning, TEXT("Hit Point in Glass Local Space: %s"), *LocalHitPosition.ToString());
-			UE_LOG(LogTemp, Warning, TEXT("Hit Point in World Space: %s"), *WorldHitLocation.ToString());
-			UE_LOG(LogTemp, Warning, TEXT("Actor Location: %s"), *GetActorLocation().ToString());
-
-			DrawDebugSphere(GetWorld(), WorldHitLocation, 8.0f, 12, FColor::White, false, 5.0f);
-			float ImpactRadius = 50.0f;
-			DrawImpactCircle(WorldHitLocation, ImpactRadius, 5.0f);
-
-			//PatternCells = FracturePatternGenerator::CreateDiagonalPieces(WorldHitLocation, LocalMaxBound - LocalMinBound, GetActorLocation());
 			PatternCells = FracturePatternGenerator::CreateSpiderwebPieces(LocalHitPosition * 3.0f, GetActorLocation(), PolygonDataTable, VertexDataTable);
-			VisualizePieces(PatternCells, false, 0.0f);
+		else if (HitComp == ProcMesh)
+			PatternCells = FracturePatternGenerator::CreateSpiderwebPieces(LocalHitPosition, GetActorLocation(), PolygonDataTable, VertexDataTable);
+		VisualizePieces(PatternCells, false, 1.0f);
 
-			TArray<Piece> ClippedPieces;
-			TArray<Piece> OutsidePieces;
-			TMap<int32, TArray<int32>> CellToPiecesMap;
+		TArray<Piece> ClippedPieces;
+		TArray<Piece> OutsidePieces;
+		TMap<int32, TArray<int32>> CellToPiecesMap;
 
-			int32 PieceIndex = 0;
-			for (int32 i = 0; i < GridPolygons.Num(); ++i) {
-				const Piece& Subject = GridPolygons[i];
+		int32 PieceIndex = 0;
+		for (int32 i = 0; i < IntactPieces.Num(); ++i) {
+			const Piece& Subject = IntactPieces[i];
 
-				FVector Scale = Glass->GetComponentScale();
-				Point Center((LocalHitPosition * Scale).X, (LocalHitPosition * Scale).Z);
-				ECircleIntersectionType IntersectionResult = CheckPieceCircleIntersection(Subject, FVector(Center.x, 0.0f, Center.z), ImpactRadius);
+			FVector Scale = HitComp->GetComponentScale();
+			Point Center((LocalHitPosition * Scale).X, (LocalHitPosition * Scale).Z);
+			ECircleIntersectionType IntersectionResult = CheckPieceCircleIntersection(Subject, FVector(Center.x, 0.0f, Center.z), ImpactRadius);
 
-				if (IntersectionResult == ECircleIntersectionType::Outside) {
-					OutsidePieces.Add(Subject);
-					continue;
-				}
+			if (IntersectionResult == ECircleIntersectionType::Outside) {
+				OutsidePieces.Add(Subject);
+				continue;
+			}
 
-				for (int32 j = 0; j < PatternCells.Num(); ++j) {
-					const Piece& Clip = PatternCells[j];
+			for (int32 j = 0; j < PatternCells.Num(); ++j) {
+				const Piece& Clip = PatternCells[j];
 
-					TArray<Point> ClippedPoints = PolygonClipper::PerformClipping(Subject.points, Clip.points);
+				TArray<Point> ClippedPoints = PolygonClipper::PerformClipping(Subject.points, Clip.points);
 
-					if (ClippedPoints.Num() > 0) {
-						Piece NewPiece(ClippedPoints);
-						ECircleIntersectionType ClippedIntersectionResult = CheckPieceCircleIntersection(NewPiece, FVector(Center.x, 0.0f, Center.z), ImpactRadius);
+				if (ClippedPoints.Num() > 0) {
+					Piece NewPiece(ClippedPoints);
+					ECircleIntersectionType ClippedIntersectionResult = CheckPieceCircleIntersection(NewPiece, FVector(Center.x, 0.0f, Center.z), ImpactRadius);
 
-						switch (ClippedIntersectionResult) {
-						case ECircleIntersectionType::Inside:
-						case ECircleIntersectionType::Overlapping:
-							ClippedPieces.Add(NewPiece);
-							UE_LOG(LogTemp, Warning, TEXT("Piece %d generated clipped piece %d"), j, PieceIndex);
-							
-							if (!CellToPiecesMap.Contains(j)) {
-								CellToPiecesMap.Add(j, TArray<int32>());
-							}
-							CellToPiecesMap[j].Add(PieceIndex);
-							PieceIndex++;
-							break;
-						case ECircleIntersectionType::Outside:
-							UE_LOG(LogTemp, Warning, TEXT("Clipped Piece is completely outside the circle."));
-							OutsidePieces.Add(NewPiece);
-							break;
+					switch (ClippedIntersectionResult) {
+					case ECircleIntersectionType::Inside:
+					case ECircleIntersectionType::Overlapping:
+						ClippedPieces.Add(NewPiece);
+						UE_LOG(LogTemp, Log, TEXT("Piece %d generated clipped piece %d"), j, PieceIndex);
+
+						if (!CellToPiecesMap.Contains(j)) {
+							CellToPiecesMap.Add(j, TArray<int32>());
 						}
+						CellToPiecesMap[j].Add(PieceIndex);
+						PieceIndex++;
+						break;
+					case ECircleIntersectionType::Outside:
+						UE_LOG(LogTemp, Log, TEXT("Clipped Piece is completely outside the circle."));
+						OutsidePieces.Add(NewPiece);
+						break;
 					}
 				}
 			}
-			UE_LOG(LogTemp, Warning, TEXT("number of clipped pieces: %d"), ClippedPieces.Num());
-			VisualizePieces(ClippedPieces, true, 0.0f);
+		}
+		UE_LOG(LogTemp, Warning, TEXT("number of clipped pieces: %d"), ClippedPieces.Num());
+		VisualizePieces(ClippedPieces, true, 0.0f);
 
-			GeneratePieceMeshes(ClippedPieces, CellToPiecesMap);
-			GeneratePieceMeshes(OutsidePieces);
-		}
-		else if (HitComp == ProcMesh)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Hit! > ProceduralMesh component"));
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Hit! > Other component"));
-		}
+		GeneratePieceMeshes(ClippedPieces, CellToPiecesMap);
+		GeneratePieceMeshes(OutsidePieces);
+
+		IntactPieces = MoveTemp(OutsidePieces);
 	}
 }
 
@@ -226,10 +217,8 @@ void AShatterableGlass::CreateGridPolygons(int32 rows, int32 cols)
 
 void AShatterableGlass::GeneratePieceMeshes(const TArray<Piece>& Pieces)
 {
-	UMaterialInterface* GlassMaterial = nullptr;
 	if (Glass)
 	{
-		GlassMaterial = Glass->GetMaterial(0);
 		Glass->OnComponentHit.RemoveDynamic(this, &AShatterableGlass::OnHit);
 		Glass->DestroyComponent();
 		Glass = nullptr;
@@ -260,12 +249,6 @@ void AShatterableGlass::GeneratePieceMeshes(const TArray<Piece>& Pieces)
 
 void AShatterableGlass::GeneratePieceMeshes(const TArray<Piece>& Pieces, const TMap<int32, TArray<int32>>& CellToPiecesMap)
 {
-	UMaterialInterface* GlassMaterial = nullptr;
-	if (Glass)
-	{
-		GlassMaterial = Glass->GetMaterial(0);
-	}
-
 	for (const auto& Pair : CellToPiecesMap)
 	{
 		int32 CellIndex = Pair.Key;
