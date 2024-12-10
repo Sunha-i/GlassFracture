@@ -4,7 +4,7 @@
 #include "ShatterableGlass.h"
 #include "PolygonClipper.h"
 #include "PatternCells/FracturePatternGenerator.h"
-#include "VoronoiDiagram/DelaunayTriangulator.h"
+#include "VoronoiDiagram/VoronoiGenerator.h"
 
 // Sets default values
 AShatterableGlass::AShatterableGlass()
@@ -68,9 +68,14 @@ void AShatterableGlass::BeginPlay()
 
 	UE_LOG(LogTemp, Warning, TEXT("Min Bounds: %s, Max Bounds: %s"), *LocalMinBound.ToString(), *LocalMaxBound.ToString());
 
-	CreateGridPolygons(4, 4);
+	/*CreateGridPolygons(4, 4);
 	VisualizePieces(GridPolygons, false, 1.0f);
-	IntactPieces = GridPolygons;
+	IntactPieces = GridPolygons;*/
+
+	TArray<Point> RandomPoints = GenerateRandomPoints(50.0f, 70, 60.0f);
+	TArray<Piece> VoronoiPolygons = VoronoiGenerator::GenerateVoronoiCells(RandomPoints, LocalMinBound, LocalMaxBound);
+	VisualizePieces(VoronoiPolygons, true, 3.0f);
+	IntactPieces = VoronoiPolygons;
 }
 
 void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -86,16 +91,16 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 		UE_LOG(LogTemp, Warning, TEXT("Hit Point in World Space: %s"), *WorldHitLocation.ToString());
 		UE_LOG(LogTemp, Warning, TEXT("Actor Location: %s"), *GetActorLocation().ToString());
 
-		DrawDebugSphere(GetWorld(), WorldHitLocation, 8.0f, 12, FColor::White, false, 5.0f);
-		float ImpactRadius = 30.0f;
-		DrawImpactCircle(WorldHitLocation, ImpactRadius, 5.0f);
+		DrawDebugSphere(GetWorld(), WorldHitLocation, 8.0f, 12, FColor::White, false, 2.0f);
+		float ImpactRadius = 80.0f;
+		DrawImpactCircle(WorldHitLocation, ImpactRadius, 1.0f);
 
 		//PatternCells = FracturePatternGenerator::CreateDiagonalPieces(WorldHitLocation, LocalMaxBound - LocalMinBound, GetActorLocation());
 		if (HitComp == Glass)
 			PatternCells = FracturePatternGenerator::CreateSpiderwebPieces(LocalHitPosition * 3.0f, GetActorLocation(), PolygonDataTable, VertexDataTable);
 		else if (HitComp == ProcMesh)
 			PatternCells = FracturePatternGenerator::CreateSpiderwebPieces(LocalHitPosition, GetActorLocation(), PolygonDataTable, VertexDataTable);
-		VisualizePieces(PatternCells, false, 1.0f);
+		VisualizePieces(PatternCells, false, 0.0f);
 
 		TArray<Piece> ClippedPieces;
 		TArray<Piece> OutsidePieces;
@@ -146,6 +151,12 @@ void AShatterableGlass::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 		UE_LOG(LogTemp, Warning, TEXT("number of clipped pieces: %d"), ClippedPieces.Num());
 		VisualizePieces(ClippedPieces, true, 0.0f);
 
+		if (Glass)
+		{
+			Glass->OnComponentHit.RemoveDynamic(this, &AShatterableGlass::OnHit);
+			Glass->DestroyComponent();
+			Glass = nullptr;
+		}
 		GeneratePieceMeshes(ClippedPieces, CellToPiecesMap);
 		GeneratePieceMeshes(OutsidePieces);
 
@@ -217,13 +228,6 @@ void AShatterableGlass::CreateGridPolygons(int32 rows, int32 cols)
 
 void AShatterableGlass::GeneratePieceMeshes(const TArray<Piece>& Pieces)
 {
-	if (Glass)
-	{
-		Glass->OnComponentHit.RemoveDynamic(this, &AShatterableGlass::OnHit);
-		Glass->DestroyComponent();
-		Glass = nullptr;
-	}
-
 	ProcMesh->ClearAllMeshSections();
 
 	int32 SectionIndex = 0;
@@ -392,8 +396,8 @@ TArray<Point> AShatterableGlass::GenerateRandomPoints(float MinDistance, int32 N
 
 	const int32 MaxAttempts = 30;
 
-	FVector AdjustedMin = FVector(LocalMinBound.X + EdgeOffset, 0.0f, LocalMinBound.Z + EdgeOffset);
-	FVector AdjustedMax = FVector(LocalMaxBound.X - EdgeOffset, 0.0f, LocalMaxBound.Z - EdgeOffset);
+	FVector AdjustedMin = LocalMinBound - FVector(EdgeOffset, 0.0f, EdgeOffset);
+	FVector AdjustedMax = LocalMaxBound + FVector(EdgeOffset, 0.0f, EdgeOffset);
 
 	for (int32 i = 0; i < NumPoints; ++i)
 	{
@@ -422,7 +426,7 @@ TArray<Point> AShatterableGlass::GenerateRandomPoints(float MinDistance, int32 N
 		{
 			PoissonPoints.Add(CandidatePoint);
 			RandomPoints.Add(Point(CandidatePoint.X, CandidatePoint.Z));
-			DrawDebugSphere(GetWorld(), CandidatePoint + GetActorLocation(), 4.0f, 12, FColor::Orange, false, 8.0f);
+			DrawDebugSphere(GetWorld(), CandidatePoint + GetActorLocation(), 4.0f, 12, FColor::Orange, false, 3.0f);
 		}
 	}
 
