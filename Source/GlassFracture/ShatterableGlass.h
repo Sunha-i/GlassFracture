@@ -29,6 +29,9 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	UProceduralMeshComponent* ProcMesh;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+	USoundBase* ShatterSound;
+
 public:
 	UFUNCTION()
 	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
