@@ -310,7 +310,7 @@ void AShatterableGlass::GeneratePieceMeshes(const TArray<Piece>& Pieces, const T
 		// Apply an impulse in a randomly varied direction based on the Y-axis.
 		FVector ImpactDirection = FVector(0.0f, 1.0f, 0.0f) + FMath::VRand() * 0.2f;
 		ImpactDirection = ImpactDirection.GetSafeNormal();
-		float ImpulseStrength = 500.0f;
+		float ImpulseStrength = 300.0f;
 		PieceMesh->AddImpulse(ImpactDirection * ImpulseStrength, NAME_None, true);
 		PieceMesh->WakeRigidBody();
 	}
