@@ -3,18 +3,20 @@
 > <samp>Real-Time Glass Fracture Simulation using Fracture Patterns and Convex Decomposition</samp>
 
 ## 📹 Demo
+![demo](https://github.com/user-attachments/assets/2f0ff6e0-e806-4b8c-adcd-6284c3e528ae)
+
 ## 🕸️ Summary
 ## 🎼 Class Structure
 ```
-├── GlassFracture
+├──📂 GlassFracture
 │   ├── ShatterableGlass ** actor class
-│   ├── PatternCells
+│   ├──📂 PatternCells
 │   │   ├── FracturePatternGenerator
 │   │   ├── PolygonData
 │   │   └── VertexData
 │   ├── PolygonClipper
 │   ├── TriangulationTypes
-└── └── VoronoiDiagram
+└── └──📂 VoronoiDiagram
         ├── DelaunayTriangulator
         └── VoronoiGenerator
 ```
